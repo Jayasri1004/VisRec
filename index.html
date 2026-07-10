@@ -1,0 +1,700 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>VisRec — AI Visualization Recommender</title>
+    <style>
+        :root {
+            --bg-main: #0f172a; --bg-card: #1e293b; --text-main: #f8fafc;
+            --text-muted: #94a3b8; --accent: #f59e0b; --brand-blue: #3b82f6;
+            --border: #334155; --green: #10b981; --red: #ef4444; --purple: #8b5cf6;
+            --orange: #f97316;
+        }
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: system-ui, sans-serif; background: var(--bg-main); color: var(--text-main); display: flex; min-height: 100vh; }
+
+        /* ── Sidebar ── */
+        .sidebar { width: 280px; background: #0b0f19; border-right: 1px solid var(--border); padding: 24px 18px; display: flex; flex-direction: column; gap: 10px; flex-shrink: 0; overflow-y: auto; }
+        .sidebar h3 { font-size: 15px; color: var(--accent); letter-spacing: 0.5px; }
+        .sidebar-label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-muted); margin-top: 10px; }
+
+        /* Sidebar stat counters */
+        .stat-row { display: flex; gap: 8px; }
+        .stat-box { flex: 1; background: #111827; border: 1px solid var(--border); border-radius: 6px; padding: 8px 10px; text-align: center; }
+        .stat-num { font-size: 20px; font-weight: 800; }
+        .stat-lbl { font-size: 9px; text-transform: uppercase; color: var(--text-muted); letter-spacing: .5px; }
+        .stat-rec  .stat-num { color: var(--brand-blue); }
+        .stat-acc  .stat-num { color: var(--green); }
+        .stat-rej  .stat-num { color: var(--red); }
+
+        /* Sidebar clear button */
+        .btn-clear-hist { width: 100%; background: #1a0a0a; color: #f87171; border: 1px solid var(--red); border-radius: 6px; padding: 8px; font-size: 11px; font-weight: 700; cursor: pointer; margin-top: 4px; transition: background .15s; }
+        .btn-clear-hist:hover { background: #2c1318; }
+        .btn-clear-hist:disabled { opacity: .4; cursor: not-allowed; }
+
+        .history-item { padding: 9px 12px; background: #161f30; border-radius: 6px; cursor: pointer; font-size: 12px; border: 1px solid transparent; transition: border .15s; }
+        .history-item:hover { border-color: var(--brand-blue); }
+        .history-item strong { display: block; color: var(--text-main); }
+        .history-item span { color: var(--text-muted); font-size: 11px; }
+
+        /* ── Main ── */
+        .main { flex: 1; padding: 36px 40px; overflow-x: hidden; }
+
+        /* ── Hero ── */
+        .hero h1 { font-size: 28px; margin-bottom: 6px; }
+        .hero h1 span { color: var(--accent); }
+        .hero p { color: var(--text-muted); font-size: 14px; margin-bottom: 24px; }
+
+        /* ── Upload panel ── */
+        .upload-panel { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 20px; margin-bottom: 24px; }
+        .drop-zone { background: #0f172a; border: 2px dashed var(--border); border-radius: 8px; padding: 18px; text-align: center; cursor: pointer; margin-bottom: 12px; transition: border-color .2s; font-size: 13px; color: var(--text-muted); }
+        .drop-zone:hover { border-color: var(--accent); }
+        .drop-zone.has-file { border-color: var(--green); color: var(--green); }
+        .goal-row { display: flex; gap: 12px; align-items: flex-end; margin-bottom: 12px; }
+        .goal-row label { font-size: 11px; font-weight: 700; color: var(--text-muted); display: block; margin-bottom: 4px; }
+        .goal-select { flex: 1; padding: 10px 12px; background: #0f172a; border: 1px solid var(--border); color: #fff; border-radius: 6px; font-size: 13px; cursor: pointer; }
+        .btn-primary { background: var(--accent); color: #000; font-weight: 700; font-size: 13px; border: none; border-radius: 6px; padding: 11px 24px; cursor: pointer; width: 100%; transition: opacity .15s; }
+        .btn-primary:hover { opacity: .88; }
+        .btn-primary:disabled { opacity: .5; cursor: not-allowed; }
+
+        /* ── Section headings ── */
+        .section-heading { font-size: 11px; text-transform: uppercase; letter-spacing: 1.2px; color: var(--text-muted); margin: 24px 0 12px; border-bottom: 1px solid var(--border); padding-bottom: 6px; display: flex; align-items: center; justify-content: space-between; }
+        .section-heading .count-badge { font-size: 10px; background: #1e293b; border: 1px solid var(--border); border-radius: 10px; padding: 2px 8px; color: var(--text-main); font-weight: 700; }
+        .section-heading.green-line { border-bottom-color: var(--green); color: #6ee7b7; }
+        .section-heading.red-line   { border-bottom-color: var(--red);   color: #fca5a5; }
+
+        /* ── Narrative ── */
+        .narrative-box { background: var(--bg-card); border-left: 3px solid var(--accent); border-radius: 6px; padding: 14px 18px; font-size: 13px; color: #cbd5e1; line-height: 1.6; }
+
+        /* ── Chart grids ── */
+        .charts-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(380px, 1fr)); gap: 20px; }
+
+        /* Empty state */
+        .empty-state { text-align: center; padding: 36px 20px; color: var(--text-muted); font-size: 13px; grid-column: 1/-1; background: #111827; border: 1px dashed var(--border); border-radius: 8px; }
+
+        /* ── Chart card ── */
+        .chart-card { background: var(--bg-card); border: 1px solid var(--border); border-radius: 12px; padding: 18px; display: flex; flex-direction: column; gap: 11px; transition: border .2s, box-shadow .2s, opacity .3s; }
+        .chart-card.is-accepted { border: 2px solid var(--green); box-shadow: 0 0 14px rgba(16,185,129,.15); }
+        .chart-card.is-rejected { border: 1px solid #3f1a1a; }
+        .chart-card.is-pending  { border: 1px solid var(--border); }
+
+        .card-header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+        .badge { display: inline-block; padding: 3px 8px; border-radius: 4px; font-size: 10px; font-weight: 700; text-transform: uppercase; white-space: nowrap; }
+        .badge-type   { background: #1c2d1e; color: #6ee7b7; border: 1px solid var(--green); }
+        .badge-goal   { background: #1e3a8a; color: #60a5fa; border: 1px solid #3b82f6; }
+        .badge-acc    { background: #0a2318; color: #34d399; border: 1px solid var(--green); }
+        .badge-rej    { background: #2c1018; color: #f87171; border: 1px solid var(--red); }
+
+        .card-title   { font-size: 14px; font-weight: 700; }
+
+        .chart-viewport { width: 100%; background: #0f172a; min-height: 220px; display: flex; align-items: center; justify-content: center; border-radius: 8px; border: 1px solid #233145; overflow: hidden; }
+        .chart-viewport img { width: 100%; height: auto; object-fit: contain; display: block; }
+
+        /* ── Insight box ── */
+        .insight-box { background: #0d1b2a; border: 1px solid #1e3a5f; border-radius: 8px; padding: 11px 13px; }
+        .insight-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--brand-blue); margin-bottom: 5px; }
+        .insight-text  { font-size: 12px; color: #cbd5e1; line-height: 1.5; }
+
+        /* ── SHAP panel ── */
+        .shap-panel  { background: #131c2e; border: 1px solid var(--brand-blue); border-radius: 8px; padding: 11px 13px; }
+        .shap-label  { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--brand-blue); margin-bottom: 7px; }
+        .shap-row    { display: flex; align-items: center; gap: 8px; margin-bottom: 5px; font-size: 11px; }
+        .shap-feature{ color: var(--text-muted); flex: 1; }
+        .shap-bar-bg { width: 60px; height: 5px; background: #1e293b; border-radius: 3px; overflow: hidden; }
+        .shap-bar-fill{ height: 100%; border-radius: 3px; }
+        .shap-val    { font-family: monospace; font-weight: 700; font-size: 11px; width: 40px; text-align: right; }
+
+        /* ── Critic panel ── */
+        .critic-panel { background: #0f172a; border: 1px solid #334155; border-radius: 8px; padding: 11px 13px; }
+        .critic-label { font-size: 10px; font-weight: 700; text-transform: uppercase; color: var(--accent); margin-bottom: 7px; }
+        .metrics-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 5px; margin-bottom: 7px; }
+        .metric       { display: flex; justify-content: space-between; background: #1e293b; padding: 4px 8px; border-radius: 4px; font-size: 11px; }
+        .metric-name  { color: var(--text-muted); }
+        .metric-val   { font-weight: 700; }
+        .metric-overall { grid-column: span 2; background: #1e1b4b; border: 1px solid #4338ca; }
+
+        /* ── Action bars ── */
+        .action-bar { display: flex; gap: 8px; border-top: 1px solid var(--border); padding-top: 11px; margin-top: auto; }
+
+        /* Recommended card actions */
+        .btn-accept  { flex: 1; background: #132b24; color: #34d399; border: 1px solid var(--green); border-radius: 6px; padding: 9px; font-weight: 700; font-size: 12px; cursor: pointer; transition: background .15s; }
+        .btn-accept:hover  { background: #1a3d32; }
+        .btn-reject  { flex: 1; background: #2c1a1d; color: #f87171; border: 1px solid var(--red); border-radius: 6px; padding: 9px; font-weight: 700; font-size: 12px; cursor: pointer; transition: background .15s; }
+        .btn-reject:hover  { background: #3b2124; }
+
+        /* Accepted card actions */
+        .btn-unaccept { flex: 1; background: #1a1208; color: #fcd34d; border: 1px solid var(--accent); border-radius: 6px; padding: 9px; font-weight: 700; font-size: 12px; cursor: pointer; transition: background .15s; }
+        .btn-unaccept:hover { background: #241a0a; }
+
+        /* Rejected card actions */
+        .btn-restore { flex: 1; background: #0f2544; color: #60a5fa; border: 1px solid var(--brand-blue); border-radius: 6px; padding: 9px; font-weight: 700; font-size: 12px; cursor: pointer; transition: background .15s; }
+        .btn-restore:hover { background: #1a3a6b; }
+
+        /* ── Toast ── */
+        #toast { position: fixed; bottom: 22px; right: 22px; background: #1e293b; padding: 10px 18px; border-radius: 8px; font-size: 13px; font-weight: 600; display: none; z-index: 99; border: 1px solid var(--green); color: var(--green); }
+
+        /* ── Loading ── */
+        #loading { display: none; position: fixed; inset: 0; background: rgba(0,0,0,.6); z-index: 50; align-items: center; justify-content: center; flex-direction: column; gap: 16px; }
+        #loading.active { display: flex; }
+        .spinner { width: 46px; height: 46px; border: 4px solid #334155; border-top-color: var(--accent); border-radius: 50%; animation: spin .8s linear infinite; }
+        @keyframes spin { to { transform: rotate(360deg); } }
+        .loading-text { color: var(--text-muted); font-size: 13px; }
+
+        /* Rejected section dim */
+        #rejected-section .chart-card { opacity: .80; }
+    </style>
+</head>
+<body>
+
+<div id="loading"><div class="spinner"></div><div class="loading-text" id="loading-msg">Running analysis pipeline…</div></div>
+<div id="toast"></div>
+
+<!-- ══ Sidebar ══ -->
+<div class="sidebar">
+    <h3>VisRec</h3>
+
+    <div class="sidebar-label">Current Session</div>
+    <div class="stat-row">
+        <div class="stat-box stat-rec">
+            <div class="stat-num" id="stat-rec">0</div>
+            <div class="stat-lbl">Pending</div>
+        </div>
+        <div class="stat-box stat-acc">
+            <div class="stat-num" id="stat-acc">0</div>
+            <div class="stat-lbl">Accepted</div>
+        </div>
+        <div class="stat-box stat-rej">
+            <div class="stat-num" id="stat-rej">0</div>
+            <div class="stat-lbl">Rejected</div>
+        </div>
+    </div>
+
+    <button class="btn-clear-hist" id="btn-clear" onclick="clearDecisions()" disabled>
+        🗑 Clear All Decisions
+    </button>
+
+    <!-- Inline confirm panel (no browser confirm dialog) -->
+    <div id="confirm-panel" style="display:none; background:#1a0a0a; border:1px solid var(--red); border-radius:6px; padding:10px; font-size:11px; color:#f87171;">
+        <div style="margin-bottom:8px; font-weight:700;">Are you sure?</div>
+        <div style="display:flex; gap:6px;">
+            <button onclick="confirmClear()" style="flex:1; background:#2c1318; color:#f87171; border:1px solid var(--red); border-radius:4px; padding:6px; font-size:11px; font-weight:700; cursor:pointer;">Yes, Clear</button>
+            <button onclick="cancelClear()" style="flex:1; background:#1e293b; color:#94a3b8; border:1px solid var(--border); border-radius:4px; padding:6px; font-size:11px; font-weight:700; cursor:pointer;">Cancel</button>
+        </div>
+    </div>
+
+    <div class="sidebar-label">Run History</div>
+    <div id="history-container">
+        <div style="font-size:12px;color:var(--text-muted);">No previous runs.</div>
+    </div>
+
+    <button class="btn-clear-hist" id="btn-clear-runs" onclick="clearRunHistory()" style="margin-top:4px; border-color:#334155; color:#94a3b8; background:#0f172a;">
+        🗑 Clear Run History
+    </button>
+    <!-- Inline confirm for run history -->
+    <div id="confirm-runs-panel" style="display:none; background:#0d1117; border:1px solid var(--border); border-radius:6px; padding:10px; font-size:11px; color:#94a3b8;">
+        <div style="margin-bottom:8px; font-weight:700;">Delete all run history?</div>
+        <div style="display:flex; gap:6px;">
+            <button onclick="confirmClearRuns()" style="flex:1; background:#1e293b; color:#f87171; border:1px solid var(--red); border-radius:4px; padding:6px; font-size:11px; font-weight:700; cursor:pointer;">Yes, Delete</button>
+            <button onclick="cancelClearRuns()" style="flex:1; background:#1e293b; color:#94a3b8; border:1px solid var(--border); border-radius:4px; padding:6px; font-size:11px; font-weight:700; cursor:pointer;">Cancel</button>
+        </div>
+    </div>
+</div>
+
+<!-- ══ Main ══ -->
+<div class="main">
+    <div class="hero">
+        <h1><span>VisRec</span> — AI Visualization Recommender</h1>
+        <p>Upload a CSV, choose your analytical goal, and review ranked chart recommendations.</p>
+    </div>
+
+    <!-- Upload -->
+    <div class="upload-panel">
+        <div class="drop-zone" id="drop-zone" onclick="document.getElementById('csv-input').click()">
+            <span id="upload-txt">📂 Click to upload a CSV file</span>
+            <input type="file" id="csv-input" accept=".csv" style="display:none" onchange="fileSelected(event)">
+        </div>
+        <div class="goal-row">
+            <div style="flex:1">
+                <label>Analytical Goal</label>
+                <select id="goal-select" class="goal-select">
+                    <option value="COMPARISON">Comparison — compare values across categories</option>
+                    <option value="TREND_ANALYSIS">Trend Analysis — track changes over time</option>
+                    <option value="CORRELATION">Correlation — find relationships between variables</option>
+                    <option value="DISTRIBUTION">Distribution — understand data spread</option>
+                    <option value="ANOMALY_DETECTION">Anomaly Detection — spot outliers</option>
+                    <option value="FORECASTING">Forecasting — project future values</option>
+                </select>
+            </div>
+        </div>
+        <button class="btn-primary" id="btn-run" onclick="runAnalysis()">▶ Run Visualization Analysis</button>
+    </div>
+
+    <!-- Narrative -->
+    <div class="section-heading">Analysis Summary</div>
+    <div id="narrative-container">
+        <div class="narrative-box" style="color:var(--text-muted);">Upload a CSV file and run the pipeline.</div>
+    </div>
+
+    <!-- ══ RECOMMENDED (pending) ══ -->
+    <div class="section-heading" id="rec-heading">
+        Recommended Visualizations
+        <span class="count-badge" id="rec-count">0</span>
+    </div>
+    <div class="charts-grid" id="recommended-container">
+        <div class="empty-state">No charts yet. Upload a CSV to begin.</div>
+    </div>
+
+    <!-- ══ ACCEPTED ══ -->
+    <div class="section-heading green-line" id="acc-heading" style="display:none">
+        ✔ Accepted Charts
+        <span class="count-badge" style="border-color:var(--green);color:#34d399;" id="acc-count">0</span>
+    </div>
+    <div class="charts-grid" id="accepted-container" style="display:none"></div>
+
+    <!-- ══ REJECTED ══ -->
+    <div class="section-heading red-line" id="rej-heading" id="rejected-section" style="display:none">
+        ✖ Rejected Charts
+        <span class="count-badge" style="border-color:var(--red);color:#f87171;" id="rej-count">0</span>
+    </div>
+    <div class="charts-grid" id="rejected-container" style="display:none"></div>
+
+</div><!-- /main -->
+
+<script>
+// ══════════════════════════════════════════
+//  STATE
+// ══════════════════════════════════════════
+let selectedFile = null;
+let activeRunId  = null;
+
+// Three canonical lists — each holds full chart objects
+const state = {
+    recommended: [],   // pending review
+    accepted:    [],
+    rejected:    []
+};
+
+// ══════════════════════════════════════════
+//  FILE SELECTION
+// ══════════════════════════════════════════
+function fileSelected(e) {
+    const f = e.target.files[0]; if (!f) return;
+    selectedFile = f;
+    document.getElementById('drop-zone').classList.add('has-file');
+    document.getElementById('upload-txt').innerText = `✔ ${f.name}`;
+}
+
+// ══════════════════════════════════════════
+//  RUN PIPELINE
+// ══════════════════════════════════════════
+async function runAnalysis() {
+    if (!selectedFile) { showToast('Please select a CSV file first.', '#ef4444'); return; }
+    const goal = document.getElementById('goal-select').value;
+    const fd   = new FormData();
+    fd.append('file', selectedFile);
+    fd.append('goal', goal);
+
+    setLoading(true, 'Profiling data and generating charts…');
+    document.getElementById('btn-run').disabled = true;
+
+    try {
+        const res = await fetch('/api/analyze', { method:'POST', body:fd });
+        if (!res.ok) throw new Error(res.status);
+        const payload = await res.json();
+        loadPayload(payload);
+        loadHistory();
+        showToast(`✔ ${payload.charts.length} charts generated`, '#10b981');
+    } catch(e) {
+        showToast('Analysis failed. Check the server log.', '#ef4444');
+        console.error(e);
+    } finally {
+        setLoading(false);
+        document.getElementById('btn-run').disabled = false;
+    }
+}
+
+// ══════════════════════════════════════════
+//  LOAD PAYLOAD → SEED STATE
+// ══════════════════════════════════════════
+function loadPayload(payload) {
+    activeRunId = payload.run_id;
+
+    // Update narrative
+    document.getElementById('narrative-container').innerHTML =
+        `<div class="narrative-box">${payload.dashboard?.narrative || 'Analysis complete.'}</div>`;
+
+    // Reset state — all charts start as recommended
+    state.recommended = (payload.charts || []).map(c => ({ ...c, review_state: 'pending' }));
+    state.accepted    = [];
+    state.rejected    = [];
+
+    renderAll();
+    document.getElementById('btn-clear').disabled = false;
+}
+
+// ══════════════════════════════════════════
+//  ACCEPT — moves from recommended → accepted
+//           or from rejected → accepted
+// ══════════════════════════════════════════
+function acceptChart(chartId) {
+    const chart = removeFromAll(chartId);
+    if (!chart) return;
+
+    // Prevent duplicates
+    if (state.accepted.some(c => c.chart_id === chartId)) return;
+
+    chart.review_state = 'accepted';
+    state.accepted.push(chart);
+
+    persistReview(chartId, 'accepted');
+    renderAll();
+    showToast('✔ Chart accepted', '#10b981');
+}
+
+// ══════════════════════════════════════════
+//  REJECT — moves from recommended → rejected
+//           never permanently deleted
+// ══════════════════════════════════════════
+function rejectChart(chartId) {
+    const chart = removeFromAll(chartId);
+    if (!chart) return;
+
+    if (state.rejected.some(c => c.chart_id === chartId)) return;
+
+    chart.review_state = 'dismissed';
+    state.rejected.push(chart);
+
+    persistReview(chartId, 'dismissed');
+    renderAll();
+    showToast('✖ Chart rejected — can be restored below', '#f87171');
+}
+
+// ══════════════════════════════════════════
+//  RESTORE — moves from rejected → recommended
+// ══════════════════════════════════════════
+function restoreChart(chartId) {
+    const idx = state.rejected.findIndex(c => c.chart_id === chartId);
+    if (idx === -1) return;
+    const chart = state.rejected.splice(idx, 1)[0];
+
+    // Prevent duplicates
+    if (state.recommended.some(c => c.chart_id === chartId)) return;
+
+    chart.review_state = 'pending';
+    state.recommended.push(chart);
+
+    persistReview(chartId, 'pending');
+    renderAll();
+    showToast('↩ Chart restored to recommendations', '#60a5fa');
+}
+
+// ══════════════════════════════════════════
+//  UN-ACCEPT — moves from accepted → recommended
+// ══════════════════════════════════════════
+function unacceptChart(chartId) {
+    const idx = state.accepted.findIndex(c => c.chart_id === chartId);
+    if (idx === -1) return;
+    const chart = state.accepted.splice(idx, 1)[0];
+
+    if (state.recommended.some(c => c.chart_id === chartId)) return;
+
+    chart.review_state = 'pending';
+    state.recommended.push(chart);
+
+    persistReview(chartId, 'pending');
+    renderAll();
+    showToast('↩ Chart moved back to recommendations', '#fcd34d');
+}
+
+// ══════════════════════════════════════════
+//  CLEAR DECISIONS (with inline confirm)
+// ══════════════════════════════════════════
+function clearDecisions() {
+    document.getElementById('confirm-panel').style.display = 'block';
+    document.getElementById('btn-clear').disabled = true;
+}
+
+function cancelClear() {
+    document.getElementById('confirm-panel').style.display = 'none';
+    document.getElementById('btn-clear').disabled = false;
+}
+
+function confirmClear() {
+    document.getElementById('confirm-panel').style.display = 'none';
+
+    // Merge all charts back to recommended, deduplicated
+    const allCharts = [...state.recommended, ...state.accepted, ...state.rejected];
+    const seen = new Set();
+    state.recommended = [];
+    for (const c of allCharts) {
+        if (!seen.has(c.chart_id)) {
+            seen.add(c.chart_id);
+            c.review_state = 'pending';
+            state.recommended.push(c);
+        }
+    }
+    state.accepted = [];
+    state.rejected = [];
+
+    // Persist resets to server
+    state.recommended.forEach(c => persistReview(c.chart_id, 'pending'));
+
+    renderAll();
+    document.getElementById('btn-clear').disabled = false;
+    showToast('All decisions cleared — charts reset to Recommended', '#94a3b8');
+}
+
+// ══════════════════════════════════════════
+//  CLEAR RUN HISTORY
+// ══════════════════════════════════════════
+function clearRunHistory() {
+    document.getElementById('confirm-runs-panel').style.display = 'block';
+    document.getElementById('btn-clear-runs').disabled = true;
+}
+
+function cancelClearRuns() {
+    document.getElementById('confirm-runs-panel').style.display = 'none';
+    document.getElementById('btn-clear-runs').disabled = false;
+}
+
+async function confirmClearRuns() {
+    document.getElementById('confirm-runs-panel').style.display = 'none';
+    try {
+        const res = await fetch('/api/history/clear', { method: 'POST' });
+        if (res.ok) {
+            // Reset current session too
+            activeRunId = null;
+            state.recommended = [];
+            state.accepted = [];
+            state.rejected = [];
+            renderAll();
+            document.getElementById('narrative-container').innerHTML =
+                '<div class="narrative-box" style="color:var(--text-muted);">Run history cleared. Upload a new CSV to begin.</div>';
+            document.getElementById('recommended-container').innerHTML =
+                '<div class="empty-state">No charts yet. Upload a CSV to begin.</div>';
+            loadHistory();
+            showToast('Run history cleared', '#94a3b8');
+        } else {
+            showToast('Could not clear history — server error', '#ef4444');
+        }
+    } catch(e) {
+        showToast('Could not reach server', '#ef4444');
+    }
+    document.getElementById('btn-clear-runs').disabled = false;
+}
+
+// ══════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════
+function removeFromAll(chartId) {
+    for (const key of ['recommended', 'accepted', 'rejected']) {
+        const idx = state[key].findIndex(c => c.chart_id === chartId);
+        if (idx !== -1) return state[key].splice(idx, 1)[0];
+    }
+    return null;
+}
+
+async function persistReview(chartId, stateVal) {
+    if (!activeRunId) return;
+    try {
+        await fetch('/api/charts/review', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ run_id: activeRunId, chart_id: chartId, state: stateVal })
+        });
+    } catch(e) {}
+}
+
+// ══════════════════════════════════════════
+//  UPDATE SIDEBAR COUNTERS
+// ══════════════════════════════════════════
+function updateCounters() {
+    document.getElementById('stat-rec').textContent = state.recommended.length;
+    document.getElementById('stat-acc').textContent = state.accepted.length;
+    document.getElementById('stat-rej').textContent = state.rejected.length;
+    document.getElementById('rec-count').textContent = state.recommended.length;
+    document.getElementById('acc-count').textContent = state.accepted.length;
+    document.getElementById('rej-count').textContent = state.rejected.length;
+}
+
+// ══════════════════════════════════════════
+//  RENDER ALL THREE SECTIONS
+// ══════════════════════════════════════════
+function renderAll() {
+    updateCounters();
+    renderSection('recommended-container', state.recommended, 'recommended');
+    renderSection('accepted-container',    state.accepted,    'accepted');
+    renderSection('rejected-container',    state.rejected,    'rejected');
+
+    // Show/hide section headings
+    const showAcc = state.accepted.length > 0;
+    const showRej = state.rejected.length > 0;
+    document.getElementById('acc-heading').style.display = showAcc ? 'flex' : 'none';
+    document.getElementById('accepted-container').style.display = showAcc ? 'grid' : 'none';
+    document.getElementById('rej-heading').style.display = showRej ? 'flex' : 'none';
+    document.getElementById('rejected-container').style.display = showRej ? 'grid' : 'none';
+}
+
+// ══════════════════════════════════════════
+//  RENDER ONE SECTION
+// ══════════════════════════════════════════
+function renderSection(containerId, charts, section) {
+    const el = document.getElementById(containerId);
+    el.innerHTML = '';
+
+    if (!charts.length) {
+        const msgs = {
+            recommended: 'No pending charts. Run the pipeline or restore rejected charts.',
+            accepted:    '',
+            rejected:    ''
+        };
+        if (msgs[section]) el.innerHTML = `<div class="empty-state">${msgs[section]}</div>`;
+        return;
+    }
+
+    charts.forEach(c => {
+        const ev   = c.critic_evaluation  || { suitability_score:88, readability_score:88, overall_score:88, critic_summary:'' };
+        const shap = c.shap_explanation   || { contributions:[] };
+        const gCtx = c.goal_context       || { active_goal:'General' };
+        const conf = Math.round((c.confidence_score || 0.88) * 100);
+        const ins  = c.explanation || c.description || 'Chart generated from your dataset.';
+
+        // SHAP bars
+        let shapHtml = '';
+        (shap.contributions || []).forEach(f => {
+            const v   = parseFloat(f.shap_value) || 0;
+            const pct = Math.min(Math.abs(v) * 120, 100);
+            const col = v >= 0 ? '#10b981' : '#ef4444';
+            shapHtml += `
+                <div class="shap-row">
+                    <span class="shap-feature">${f.feature_name}</span>
+                    <div class="shap-bar-bg"><div class="shap-bar-fill" style="width:${pct}%;background:${col};"></div></div>
+                    <span class="shap-val" style="color:${col};">${f.display_impact}</span>
+                </div>`;
+        });
+
+        // Action bar differs by section
+        let actionHtml = '';
+        if (section === 'recommended') {
+            actionHtml = `
+                <div class="action-bar">
+                    <button class="btn-accept"  onclick="acceptChart('${c.chart_id}')">✔ Accept</button>
+                    <button class="btn-reject"  onclick="rejectChart('${c.chart_id}')">✖ Reject</button>
+                </div>`;
+        } else if (section === 'accepted') {
+            actionHtml = `
+                <div class="action-bar">
+                    <button class="btn-unaccept" onclick="unacceptChart('${c.chart_id}')">↩ Move to Recommended</button>
+                </div>`;
+        } else if (section === 'rejected') {
+            actionHtml = `
+                <div class="action-bar">
+                    <button class="btn-restore" onclick="restoreChart('${c.chart_id}')">↩ Restore to Recommended</button>
+                </div>`;
+        }
+
+        // State badge
+        const stateBadge = section === 'accepted'
+            ? '<span class="badge badge-acc">✔ Accepted</span>'
+            : section === 'rejected'
+            ? '<span class="badge badge-rej">✖ Rejected</span>'
+            : '';
+
+        el.insertAdjacentHTML('beforeend', `
+            <div class="chart-card is-${section === 'recommended' ? 'pending' : section}" id="card_${c.chart_id}_${section}">
+                <div class="card-header">
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                        <span class="badge badge-type">${c.vis_type.toUpperCase()}</span>
+                        <span class="badge badge-goal">${gCtx.active_goal}</span>
+                        ${stateBadge}
+                    </div>
+                    <span style="font-size:12px;color:var(--text-muted);">${conf}% confidence</span>
+                </div>
+
+                <div class="card-title">${c.vis_type.charAt(0).toUpperCase()+c.vis_type.slice(1)} — ${(c.columns_used||[]).join(' × ')}</div>
+
+                <div class="chart-viewport">
+                    ${c.png_url ? `<img src="${c.png_url}" alt="${c.vis_type} chart" loading="lazy">` : '<p style="color:var(--text-muted);font-size:12px;">Image unavailable</p>'}
+                </div>
+
+                <div class="insight-box">
+                    <div class="insight-label">💡 Chart Insight</div>
+                    <div class="insight-text">${ins}</div>
+                </div>
+
+                <div class="shap-panel">
+                    <div class="shap-label">Score Breakdown</div>
+                    ${shapHtml || '<div style="font-size:11px;color:var(--text-muted);">No SHAP data.</div>'}
+                </div>
+
+                <div class="critic-panel">
+                    <div class="critic-label">Visual Quality</div>
+                    <div class="metrics-grid">
+                        <div class="metric"><span class="metric-name">Suitability</span><span class="metric-val">${ev.suitability_score}%</span></div>
+                        <div class="metric"><span class="metric-name">Readability</span><span class="metric-val">${ev.readability_score}%</span></div>
+                        <div class="metric metric-overall"><span class="metric-name" style="color:#a5b4fc;">Overall</span><span class="metric-val" style="color:#a5b4fc;">${ev.overall_score}%</span></div>
+                    </div>
+                    ${ev.critic_summary ? `<div style="font-size:11px;color:#94a3b8;border-left:2px solid var(--accent);padding-left:8px;">${ev.critic_summary}</div>` : ''}
+                </div>
+
+                ${actionHtml}
+            </div>
+        `);
+    });
+}
+
+// ══════════════════════════════════════════
+//  HISTORY
+// ══════════════════════════════════════════
+async function loadHistory() {
+    try {
+        const res  = await fetch('/api/history');
+        const data = await res.json();
+        const el   = document.getElementById('history-container');
+        el.innerHTML = '';
+        if (!data.length) {
+            el.innerHTML = '<div style="font-size:12px;color:var(--text-muted);">No previous runs.</div>';
+            return;
+        }
+        data.forEach(h => {
+            el.insertAdjacentHTML('beforeend', `
+                <div class="history-item" onclick="loadRun('${h.run_id}')">
+                    <strong>${h.dataset_name}</strong>
+                    <span>${h.n_charts} charts · ${(h.row_count||0).toLocaleString()} rows</span>
+                </div>`);
+        });
+    } catch(e) {}
+}
+
+async function loadRun(id) {
+    setLoading(true, 'Loading previous run…');
+    try {
+        const res = await fetch(`/api/history/${id}`);
+        if (res.ok) loadPayload(await res.json());
+    } catch(e) {}
+    setLoading(false);
+}
+
+// ══════════════════════════════════════════
+//  HELPERS
+// ══════════════════════════════════════════
+function setLoading(on, msg = '') {
+    document.getElementById('loading').classList.toggle('active', on);
+    if (msg) document.getElementById('loading-msg').innerText = msg;
+}
+
+function showToast(msg, color = '#10b981') {
+    const t = document.getElementById('toast');
+    t.innerText = msg;
+    t.style.color       = color;
+    t.style.borderColor = color;
+    t.style.display     = 'block';
+    clearTimeout(t._timer);
+    t._timer = setTimeout(() => { t.style.display = 'none'; }, 3000);
+}
+
+// Init
+loadHistory();
+</script>
+</body>
+</html>
